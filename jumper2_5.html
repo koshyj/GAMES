@@ -1,0 +1,2060 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8"/>
+	<link rel="icon" href="jumper.png">
+	<title>JUMPER</title>
+	<style>
+
+		canvas{background: #444; display: block; margin: 0 auto;}
+		body{background-color: #000; text-align: center; font-family: "Impact";}
+		.title_label{color: #FFF; display: block; text-align: center ;font-size: 65px;}
+		.value_label{color: #FFF; display: inline-block; padding-top: 30px; padding-right: 20px; padding-left: 20px; font-size: 25px;}
+		.value{color: #FFF; display: inline-block; padding-top: 10px; padding-right: 30px; padding-left: 30px; font-size: 18px;}
+		.instruct{color: #FFF;font-size: 15px; padding-top:20px;}
+
+	</style>
+</head>
+
+
+<body>
+
+<div id="title" class="title_label">  JUMPER  </div>
+
+<canvas id="canvas"></canvas>
+
+<div id="point_label" class="value_label">	POINTS  </div>
+<div id="timer_label" class="value_label">	TIME BONUS  </div>
+<div style="display: block;">
+	<div id="point_counter" class="value">	0  </div>
+    <div id="timer" class="value">	0  </div>
+    <div id="instructions" class="instruct"></div>
+</div> 
+
+    
+
+<script type="text/javascript">
+    
+    //TBD
+
+		//AABB COLLISIONS : 
+        //BUFF / DEBUFF: DONE
+		//NEW LEVELS (5/6) : 
+		//INSTRUCTIONS MENU : DONE
+		//OPTIONS MENU : DONE
+		//FRAMERATE LOCKING : DONE
+		//RELEASE :
+
+
+		//SOUND/MUSIC CONTROLLER : DONE
+        //LEVELS MENU : DONE 
+        //GAME STATES : DONE
+		//LEVELLING SYSTEM : DONE 
+        //PERSISTENT SCORING SYSTEM : DONE
+        //COLOUR BUFFS : DONE        
+        //CAMERA FOLLOW :  DONE        
+        //SOUND EFFECTS : DONE
+        // MUSIC : DONE
+    
+	//BUGS
+		//NEGATIVE SCORES : FIXED
+		//SCALING JITTER : FIXED
+		//SPAWN w/ BOX on causes b collision death : 
+		//JUMP THROUGH BOTTOM OF PLATFORMS: 
+
+//CONSTANTS
+
+	//canvas
+	const WIDTH =  screen.width/1.5;
+	const HEIGHT = screen.height/1.7;		
+ 
+	//COLOURS	
+
+	const BLACK = "#000";
+	const DARKEST_GREY = "#444";
+	const DARK_GREY = "#888";
+	const LIGHT_GREY = "#DDD";
+	const WHITE = "#FFF";		
+
+
+	//player colours
+	const PINK = "#D88";
+	const YELLOW = "#DD8";
+	const GREEN = "#8D8";
+	const MINT = "#8DD";	
+	const LILAC = "#88D";
+	const PURPLE = "#D8D";
+
+
+	var palette = [ PINK, YELLOW, GREEN, MINT, LILAC];
+
+
+	//physics
+	const GRAVITY = 0.45;
+
+	//enemies
+	const BOXSPEED = 1.2;
+	const ENEMY_DMG_BOX = 50;
+	const ENEMY_DMG_PROJ = 25;
+	const ENEMY_WIDTH = 30;
+	const ENEMY_HEIGHT = 10;
+	const ENEMY_COLOUR = BLACK;
+	const ENEMY_COLOUR_DEAD = WHITE;
+
+	const POINT_UNIT = 10;
+
+	const GRID_UNIT = 25;
+	const BOUNDARY_MARGIN = 15*GRID_UNIT;
+	var LEVEL_WIDTH = 35*GRID_UNIT;
+	var LEVEL_HEIGHT = 35*GRID_UNIT;
+	//platforms
+	const PLATFORM_WIDTH = 3*GRID_UNIT;
+	const PLATFORM_COLOUR = LIGHT_GREY;
+	const BACKGROUND_COLOUR = DARKEST_GREY;
+	const BUFF_SIZE = 12;
+	const BUFF_TIME = 300;
+
+	const TIMEBONUS = 50;
+
+//GAME VARIABLES
+var updating = true;
+var finish_state = false;
+
+//colour picker
+const COLOURWIDTH = 35;
+var hover = 0;
+var pressed = false;
+
+var point_display = document.getElementById("point_counter");
+var time_display = document.getElementById("timer");
+var instruct_panel = document.getElementById("instructions");
+var time = TIMEBONUS;
+var raw_time = 0.00;
+var fps = 30;
+var interval = 1000/fps;
+var elapsed = 0.0;
+var now = 0.0;
+var then = Date.now();
+
+var hiscore = 0;
+
+
+//FSM
+var states = ["start_menu_state", "game_play_state", "game_pause_state", "game_end_state", "pause_resume", "pause_instruct", "pause_options", "pause_level", "pause_credits"];
+//menus
+var select = false;
+var delay = 0;
+var state = 0;
+var opt_hover = 0;
+var pause_hover = 0;
+var paused = false;
+var level_up = false;
+var restart = false;
+
+
+//CANVAS
+var canvas = document.getElementById("canvas");
+	canvas.width = WIDTH;
+	canvas.height = HEIGHT;
+var ctx = canvas.getContext("2d");
+
+
+//CAMERA
+var camera_dx;
+var camera_dy;
+var camera_vx = 2;
+var camera_vy = 3.5;
+var cam_rad_x = 5;
+var cam_rad_y = 5;
+var shift_x = 0;
+var shift_y = 0;
+var move_x = false;
+var move_y = false;
+var move_to_x = 0;
+var move_to_y = 0;
+var scale = 0.9;
+var update_delay = 0;
+
+//PLAYER VAR
+const PLAYER_COLOUR = WHITE;
+var player;
+var accelx;
+var accely;
+var goal;
+
+
+//USER CONTROL VARS
+var bgm_vol = 0.2;
+var sfx_vol = 0.6;
+var draw_HUD = true;
+var draw_JUMP = false;
+var draw_BUFF = true;
+var draw_SCORE = true;
+
+//SOUNDS AND MUSIC
+var sound_bounce = new sound("res/vfx/bounce.mp3");
+var sound_bump = new sound("res/vfx/bump.mp3");
+var sound_kill = new sound("res/vfx/kill.mp3");
+var sound_drop = new sound("res/vfx/drop.mp3");
+var sound_goal = new sound("res/vfx/goal.mp3");
+var play_fx = sound_kill;
+
+
+var music_1 = new sound("res/music/event horizon.mp3");
+var music_2 = new sound("res/music/stumbling in space.mp3");
+var music_3 = new sound("res/music/shooting star.mp3");
+var play_music = music_3;
+
+sound_bounce.set_vol(sfx_vol);
+sound_bump.set_vol(sfx_vol); 
+sound_kill.set_vol(sfx_vol); 
+sound_drop.set_vol(sfx_vol); 
+sound_goal.set_vol(sfx_vol); 
+
+music_1.set_vol(bgm_vol);
+music_2.set_vol(bgm_vol);
+music_3.set_vol(bgm_vol);
+
+
+var buffs;
+var obstacles;
+var enemies;
+
+//menu array
+var opt_menu = [["MUSIC", bgm_vol, "ADJUST MUSIC VOLUME"], 
+				["SFX", sfx_vol, "ADJUST SOUND EFFECT VOLUME"], 
+				["SCALE", scale, "ADJUST GAME ZOOM LEVEL"], 
+				["HUD-ALL", draw_HUD, "TOGGLE HUD"], 
+				["HUD-JUMP", draw_JUMP, "TOGGLE JUMP ACTIVE INDICATOR"], 
+				["HUD-BUFF", draw_BUFF, "TOGGLE BUFF STATUS/TIMERS"], 
+				["HUD-SCORE", draw_SCORE, "TOGGLE HISCORE DISPLAY"]];
+
+var pause_menu = [  "RESUME",
+                    "HELP",
+                    "OPTIONS",
+                    "LEVELS",
+                    "CREDITS"];
+
+var level_array = [[level_1, true, 0], [level_2, false, 0], [level_3, false, 0], [level_4, false, 0], [level_5, false, 0], [level_6, false, 0], [level_7, false, 0]];
+var music_array = [music_1, music_2, music_3];
+var level = 0;
+
+var aabb_obj;
+
+//KEYBOARD INPUT
+var keys = [];
+document.body.addEventListener("keydown", function(e) {
+    keys[e.keyCode] = true;
+});
+
+document.body.addEventListener("keyup", function(e) {
+    keys[e.keyCode] = false;
+});
+
+//SOUND
+function sound(src) {
+    this.sound = document.createElement("audio");
+    this.sound.src = src;
+    this.sound.setAttribute("preload", "auto");
+    this.sound.setAttribute("controls", "none");
+    this.sound.style.display = "none";
+    document.body.appendChild(this.sound);
+    this.play = function(){
+        this.sound.play();
+    }
+    this.stop = function(){
+        this.sound.pause();
+        this.sound.currentTime = 0;
+    }
+	this.set_vol = function(vol){
+		this.sound.volume = vol;
+	}
+}
+
+
+class Player{
+	constructor(x_pos, y_pos, width, height){
+		//PHYSICAL DATA
+		this.x = x_pos;
+		this.y = y_pos;
+		this.w = width;
+		this.h = height;
+		this.vx = 0;
+		this.vy = 0;
+
+		//FLAGS
+		this.jump = false;
+		this.walljump = false;
+		this.grounded = false;
+		this.dmg = 0;
+
+		//ATTRIBUTES
+		this.health = 100;
+		this.points = 0;
+		this.colour = PLAYER_COLOUR;
+		this.maxx_speed = 15;
+		this.maxy_speed = GRID_UNIT/1.6;
+		this.accel = 0.9;
+		this.gravity = 0.45;
+		this.friction = 0.75;
+		this.air_resistance = 0.87;
+		this.jump_speed = -9;
+		this.wall_jump_speed = -8;
+		this.points_pk = 1;
+		this.buffs = [];
+	}
+
+	jump(){		
+		this.walljump = false;	
+		this.jump = false;		
+		this.vy = this.jump_speed;
+		play_fx.stop();
+		play_fx = sound_bounce;
+		play_fx.play();
+
+	}
+
+	use_buff(buff){
+		this.buffs.push(buff);
+		buff.active = false;
+		buff.buff();
+	}
+
+	check_buff(){
+		if (this.buffs.length > 0){
+			this.colour = this.buffs[this.buffs.length - 1].colour;
+		}else{
+			this.colour = PLAYER_COLOUR;
+		}
+		var remove_list = [];
+		for (var x = 0; x < this.buffs.length; x++){
+			var buff = this.buffs[x];
+			if (buff.timer > 0){
+				buff.timer--;
+			}else{
+				buff.debuff();
+				remove_list.push(x);
+			}
+		}
+
+		for (var y = 0; y < remove_list.length; y++){
+			this.buffs.splice(remove_list[y], 1);
+		}
+
+	}
+
+
+}
+class Buff{
+	constructor(name, x_pos, y_pos, size, colour, buff_f, debuff_f, decay){
+		this.name = name;
+		this.x = x_pos;
+		this.y = y_pos;
+		this.w = size;
+		this.h = size;
+
+		this.colour = colour;
+		this.buff_function = buff_f;
+		this.debuff_function = debuff_f;
+		this.decay = decay;
+		this.timer = this.decay*BUFF_TIME;
+		this.active = true;
+	}
+
+	reset(){
+		this.timer = this.decay*BUFF_TIME;
+		this.active = true;
+	}
+
+	buff(){
+		this.buff_function();
+	}
+	debuff(){
+		this.debuff_function();
+	}
+}
+
+//PLATFORM, LEVEL CREATION FUNCTIONS
+
+//simple angle platform
+function platform_angle(x_pos, y_pos, orientation){
+	var plat_1;
+	var plat_2;
+	switch(orientation){
+
+		case 0: 
+			plat_1 = {x:x_pos,y:y_pos + PLATFORM_WIDTH - GRID_UNIT,w:PLATFORM_WIDTH,h:GRID_UNIT};
+			plat_2 = {x:x_pos + PLATFORM_WIDTH - GRID_UNIT,y:y_pos,w:GRID_UNIT,h:PLATFORM_WIDTH};
+			break;
+		case 1: 
+			plat_1 = {x:x_pos,y:y_pos + PLATFORM_WIDTH - GRID_UNIT,w:PLATFORM_WIDTH,h:GRID_UNIT};
+			plat_2 = {x:x_pos,y:y_pos,w:GRID_UNIT,h:PLATFORM_WIDTH};
+			break;
+		case 2: 
+			plat_1 = {x:x_pos,y:y_pos,w:PLATFORM_WIDTH,h:GRID_UNIT};
+			plat_2 = {x:x_pos,y:y_pos,w:GRID_UNIT,h:PLATFORM_WIDTH};
+			break;
+		case 3: 
+			plat_1 = {x:x_pos,y:y_pos,w:PLATFORM_WIDTH,h:GRID_UNIT};
+			plat_2 = {x:x_pos + PLATFORM_WIDTH - GRID_UNIT,y:y_pos,w:GRID_UNIT,h:PLATFORM_WIDTH};
+			break;
+
+	}
+	obstacles.push(plat_1);
+	obstacles.push(plat_2);
+}
+
+//four way cross
+function platform_quad(x_pos, y_pos, channel_width){
+
+	platform_angle(x_pos, y_pos, 0);
+	platform_angle(x_pos + PLATFORM_WIDTH + channel_width, y_pos, 1);
+	platform_angle(x_pos, y_pos + PLATFORM_WIDTH + channel_width, 3);
+	platform_angle(x_pos + PLATFORM_WIDTH + channel_width, y_pos + PLATFORM_WIDTH + channel_width, 2);
+	
+}
+
+//stairs
+function platform_step(x_pos, y_pos, step_count, orientation){
+
+	switch(orientation){
+		case 0:
+			for(var i = 0; i < step_count; i++){
+				platform_angle(x_pos + i*(PLATFORM_WIDTH - GRID_UNIT), y_pos - PLATFORM_WIDTH - i*(PLATFORM_WIDTH - GRID_UNIT), orientation);
+			}
+			break;
+		
+		case 1:
+			for(var i = 0; i < step_count; i++){
+				platform_angle(x_pos + i*(PLATFORM_WIDTH - GRID_UNIT), y_pos - PLATFORM_WIDTH -(step_count - 1 - i)*(PLATFORM_WIDTH - GRID_UNIT), orientation);
+			}
+			break;
+			
+	}
+	
+
+}
+function platform_cliff(x_pos, y_pos, channel_width, rail_length){
+	platform_angle(x_pos, y_pos, 3);
+	platform_angle(x_pos + 3*GRID_UNIT + channel_width, y_pos, 2);
+	obstacles.push({x:x_pos + 2*GRID_UNIT,y:y_pos + 3*GRID_UNIT,w:GRID_UNIT,h:rail_length});
+	obstacles.push({x:x_pos + 3*GRID_UNIT + channel_width,y:y_pos + 3*GRID_UNIT,w:GRID_UNIT,h:rail_length});
+}
+
+
+
+//Request Animation Frame
+(function() {
+    var requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
+    window.requestAnimationFrame = requestAnimationFrame;
+})();
+
+
+
+//BUFF FUNCTIONS
+function health_buff(){
+	player.maxx_speed *= 0.8;
+	player.maxy_speed *= 0.8;
+	player.health *= 1.50;
+}
+function health_debuff(){
+	player.maxx_speed /= 0.8;
+	player.maxy_speed /= 0.8;
+	player.health /= 1.50;
+}
+
+function speed_buff(){
+	player.accel *= 1.5;
+	player.maxx_speed *= 1.8;
+	player.friction *= 1.2;
+}
+function speed_debuff(){
+	player.accel /= 1.5;
+	player.maxx_speed /= 1.8;
+	player.friction /= 1.2;
+}
+
+
+function jump_buff(){
+	player.jump_speed *= 1.8;
+	player.wall_jump_speed *= 1.5;
+	player.maxy_speed *= 1.5;
+}
+function jump_debuff(){
+	player.jump_speed /= 1.8;
+	player.wall_jump_speed /= 1.5;
+	player.maxy_speed /= 1.5;
+}
+
+function death_buff(){
+	player.gravity *= 2.0;
+	player.dmg = true;
+}
+function death_debuff(){
+	player.gravity /= 2.0;
+	player.dmg = false;
+}
+
+//Point Buff
+function coin(){
+	player.points += POINT_UNIT;
+}
+
+//do nothing
+function dnf(){
+	//dnf
+}
+
+
+
+//AI FUNCTIONS
+function BOX(enemy){	
+	if (enemy.platform != null){
+		var platform = enemy.platform;
+		
+		if (enemy.vx == 0){
+			enemy.vx = BOXSPEED;
+		}
+
+
+		if (enemy.x - 2 < platform.x){
+			enemy.vx = BOXSPEED;
+			enemy.x = platform.x + 2;
+		}
+
+
+		if (enemy.x + enemy.w + 2 > platform.x + platform.w){
+			enemy.x = platform.x + platform.w - (enemy.w) - 2;
+			enemy.vx = -BOXSPEED;
+		}	
+
+	}
+}
+
+function SPAWN(enemy){
+	if (enemy.spawn){
+		enemy.spawn = false;
+		enemy.dead = true;
+		enemies.push({type:"BOX",x:enemy.x + enemy.w/2 - ENEMY_WIDTH/2,y:enemy.y + enemy.h + ENEMY_HEIGHT,w:ENEMY_WIDTH,h:ENEMY_HEIGHT,vx:0,vy:0,dead:false,platform:null});
+		
+	}
+}
+
+//Checks if boxes are in range
+function near(box_1, box_2){
+	var range = 200;
+	return (Math.abs(box_1.x - box_2.x) < Math.max(box_1.w, box_2.w) + range) && (Math.abs(box_1.y - box_2.y) < Math.max(box_1.h, box_2.h) + range);
+}
+
+
+
+//Collision resolution
+function collide(box_1, box_2){
+	//Half widths and heights of both objects
+	var hw1 = box_1.w/2;
+	var hh1 = box_1.h/2;
+
+	var hw2 = box_2.w/2;
+	var hh2 = box_2.h/2;
+
+	//Distance vector components (between centers)
+	var dx = Math.abs(box_1.x + hw1 - (box_2.x + hw2));
+	var dy = Math.abs(box_1.y + hh1 - (box_2.y + hh2));
+
+	//Net width, height
+	var hw = hw1 + hw2;
+	var hh = hh1 + hh2;
+
+	//Offset vector components after penetration occurs
+	var offx = hw - dx;
+	var offy = hh - dy;
+	if(offx >= 0 && offy >= 0){
+		if(offx > offy){
+			if(box_1.y < box_2.y + hh2){
+				return "t"; //Collision top
+			}else{
+				if(box_1.y > box_2.y + hh2){
+					return "b"; //Collision bottom
+				}
+			}
+		}else{
+			if(box_1.x > box_2.x + hw2){
+				return "r"; //Collision right
+			}else{
+				if(box_1.x < box_2.x + hw2){
+					return "l"; //Collision left
+				}
+			}
+		}
+	}
+	return "n";//No collision occurred
+}
+
+//AXIS ALIGNED BOUNDING BOX collision check (collider, collidee)
+function aabb_collide(box_1, box_2){
+
+    var future_x = box_1.x + box_1.vx;
+    var future_y = box_1.y + box_1.vy;
+
+    var aabb = {x: box_1.x < future_x? box_1.x: future_x, y: box_1.y < future_y? box_1.y: future_y, w: box_1.w + Math.abs(box_1.vx), h: box_1.h + Math.abs(box_1.vy), vx:box_1.vx, vy:box_1.vy};
+
+	aabb_obj = aabb;
+
+	return collide( aabb, box_2);
+    
+
+}
+
+//RUNTIME FUNCTIONS
+function handle(){
+	accelx = 0;
+	accely = 0;
+
+	//up arrow
+	if (keys[38] || keys[87]){
+		if (player.jump){			
+			player.walljump = false;	
+			player.jump = false;		
+			player.vy = player.jump_speed;
+			play_fx.stop();
+            play_fx = sound_bounce;
+            play_fx.play();
+
+		}else{
+			if(player.walljump != 0){				
+				
+				if (player.walljump == 1 && (keys[37] || keys[65])){ //jump left from right wall
+					player.vy = player.jump_speed;
+					player.vx = 1.4*player.wall_jump_speed;
+					player.walljump = 0;
+                    play_fx.stop();	
+					play_fx = sound_bounce;
+                    play_fx.play();
+				}
+                if (player.walljump == 1 && (keys[39] || keys[68])){ //jump up from right wall
+					player.vy = 1.4*player.jump_speed;
+					player.vx = player.wall_jump_speed;
+					player.walljump = 0;	
+					play_fx.stop();	
+					play_fx = sound_bounce;
+                    play_fx.play();
+				}
+				if (player.walljump == 2 && (keys[39] || keys[68])){// jump right from left wall
+					player.vy = player.jump_speed;
+					player.vx = -1.4*player.wall_jump_speed;
+					player.walljump = 0;	
+				    play_fx.stop();	
+					play_fx = sound_bounce;
+                    play_fx.play();
+				}
+                if (player.walljump == 2 && (keys[37] || keys[65])){// jump up from left wall
+					player.vy = 1.4*player.jump_speed;
+					player.vx = -player.wall_jump_speed;
+					player.walljump = 0;	
+				    play_fx.stop();	
+					play_fx = sound_bounce;
+                    play_fx.play();
+				}			
+
+			}
+		}
+	}
+
+	//down arrow
+	if (keys[40] || keys[83] ){
+        if (player.drop){
+			player.drop = false;
+			player.jump = true;
+			player.walljump = false;			
+			player.vy = -0.5*player.jump_speed;
+			play_fx.stop();	
+			play_fx = sound_drop;
+            play_fx.play();
+        }
+	}
+
+	//left arrow
+	if ((keys[37] || keys[65])){
+			accelx = -player.accel;
+	}
+	//right arrow
+	if ((keys[39] || keys[68])){
+			accelx = player.accel;
+	}
+	//p button
+    if((keys[80] || keys[27]) && !paused) {
+    	paused = true;        
+    }
+
+    //r button
+    if(keys[82] && !restart){
+    	restart = true;
+    }
+
+	//l button
+    if(keys[76] && !restart){
+    	level_up = true;
+    }
+}
+
+function update(){
+
+	var ground_buf = player.grounded;
+	var index = -1;
+    player.grounded = false;
+    var i, j, k, collision, enemy, obstacle;   
+	
+	//Update Player speed with key input
+	if (Math.abs(player.vy) < player.maxy_speed){	
+		player.vy += accely;
+	} else {
+        player.vy = player.vy > 0? player.maxy_speed: -player.maxy_speed; // Velocity clipping in y
+    }
+    
+	if (Math.abs(player.vx) < player.maxx_speed){
+		player.vx += accelx;
+	}else {
+        player.vx = player.vx > 0? player.maxx_speed: -player.maxx_speed; // Velocity clipping in x
+    }
+
+	//Boundary checks
+	if (player.x > (LEVEL_WIDTH + BOUNDARY_MARGIN) || player.x < -BOUNDARY_MARGIN || player.y < -BOUNDARY_MARGIN || player.y > (LEVEL_HEIGHT + BOUNDARY_MARGIN)){
+		sound_bump.play();
+        start_level();
+    }
+    
+
+	//Update Enemy models	(take AI function 'input')
+	for (j = 0; j < enemies.length; j++){
+		enemy = enemies[j];
+		if (!enemy.dead){
+			if(enemy.type == "BOX"){
+				BOX(enemy);
+				enemy.x += enemy.vx ;
+				enemy.y += enemy.vy ;
+				
+			    enemy.vy += GRAVITY;
+			}			
+			if(enemy.type == "SPAWN"){
+				SPAWN(enemy);
+			}
+		}				
+	}
+    
+    //Environmental Effects
+	player.vy += player.gravity;
+	player.x += player.vx;
+	player.y += player.vy;	   
+	
+	//Player Obstacle Collision
+	for (i = 0; i < obstacles.length; i++) {
+
+			collision = collide(player, obstacles[i]);
+					
+			if (collision != "n"){  
+			if (obstacles[i].name == "goal"){
+					sound_goal.play();
+					finish_state = true;
+					return;
+				}		
+
+				switch(collision){
+					case "t":
+						player.drop = false;
+						player.grounded = true;               
+						player.y = obstacles[i].y - player.h;
+						player.vy = 0;
+						player.jump = true; 					
+						break;
+					
+					case "b":
+						player.drop = true;				
+						player.y = obstacles[i].y + obstacles[i].h - 0.5;
+						player.vy = -player.gravity; 
+						break;	
+					
+					case "l":
+						player.drop = false;
+						player.x = obstacles[i].x - player.w;
+						player.vx = 0;
+						player.walljump = 1;
+						player.vy *= player.friction;
+						break;
+					
+					case "r":
+						player.drop = false;
+						player.x = obstacles[i].x + obstacles[i].w;
+						player.vx = 0;
+						player.walljump = 2;
+						player.vy *= player.friction;
+						break;
+				}
+			}
+		
+	}
+
+    if (!ground_buf && player.grounded){
+        play_fx.stop();	
+	    play_fx = sound_drop;
+        play_fx.play();
+    }
+	//Enemy Obstacle Collision
+	for (i = 0; i < obstacles.length; i++) {
+		obstacle = obstacles[i];
+		if(obstacle.name != "goal"){
+			for (j = 0; j < enemies.length; j++){
+				enemy = enemies[j];
+				collision = collide(enemy, obstacle);
+				if (collision == "t") {
+						enemy.y = obstacle.y - enemy.h;
+						enemy.vy -= GRAVITY;
+						if (enemy.type == "BOX"){
+							enemy.platform = obstacle;
+						}
+				}
+				if (collision == "r") {
+						enemy.x = obstacle.x + obstacle.w;
+						enemy.vx *= -1;}
+				if (collision == "l") {
+						enemy.x = obstacle.x - enemy.w;
+						enemy.vx *= -1;}
+			}
+		}
+	}
+
+
+	//Enemy Enemy Collision
+	for (i = 0; i < enemies.length; i++) {
+		var enemy1 = enemies[i];
+		for (j = 0; j < enemies.length; j++){
+			var enemy2 = enemies[j];
+
+			if(enemy1 != enemy2){
+				collision = collide(enemy1, enemy2);
+
+				if (collision == "r" || collision == "l"){
+					enemy2.x = collision == "r"? enemy1.x - enemy2.w : enemy1.x + enemy1.w;
+					enemy1.vx *= -1;
+					enemy2.vx *= -1;
+				}
+
+				if (collision == "t" && enemy2.type == "BOX") {
+						enemy2.y = enemy1.y - enemy2.h;
+						enemy2.vy -= GRAVITY ;
+						if (enemy2.type == "BOX" && enemy1.type == "SPAWN"){
+							enemy2.platform = enemy1;
+
+							enemy1.spawn = true;
+						}
+				}				
+
+			}
+		}
+	}  
+
+
+	//Player Enemy Collision
+	for (k = 0; k < enemies.length; k++) {
+
+		enemy = enemies[k];
+    	collision = collide(player, enemy);
+			if(collision == "t"){
+				player.grounded = true;
+				player.y = enemy.y - player.h;
+				player.vy = 0;
+				player.jump = true;					
+				if (enemy.type == "BOX"  && !enemy.dead){ 
+					if (player.dmg){
+						enemy.dead = true;
+						player.points += POINT_UNIT;
+						play_fx.stop();	
+						play_fx = sound_kill;
+						play_fx.play(); 
+					}else{
+						player.health -= ENEMY_DMG_BOX;
+						player.vy = player.jump_speed;
+						play_fx.stop();	
+						play_fx = sound_bump;
+						play_fx.play();											
+					}		   										
+				}
+				if(enemy.type == "SPAWN" && !enemy.dead){
+					enemy.spawn = true;
+					play_fx.stop();	
+					play_fx = sound_bump;
+					play_fx.play();	    		
+				}
+			}
+
+			if(collision == "l"){
+				player.x = enemy.x - player.w - 2;
+				if (!enemy.dead){
+					player.vx = enemy.vx + player.jump_speed;
+					if (enemy.type == "BOX" && !enemy.dead){
+						if (player.dmg){
+							enemy.dead = true;
+							player.points += POINT_UNIT;
+							play_fx.stop();	
+							play_fx = sound_kill;
+							play_fx.play();
+						}else{
+							player.health -= ENEMY_DMG_BOX;
+							play_fx.stop();	
+							play_fx = sound_bump;
+							play_fx.play();
+						}
+						
+					}
+				}
+			}
+				
+			if(collision == "r"){
+				player.x = enemy.x + enemy.w + 2;		    	
+				if (!enemy.dead){
+					player.vx = enemy.vx - player.jump_speed;
+					if (enemy.type == "BOX" && !enemy.dead){
+						if (player.dmg){
+							enemy.dead = true;
+							player.points += POINT_UNIT;
+							play_fx.stop();	
+							play_fx = sound_kill;
+							play_fx.play();
+						}else{
+							player.health -=ENEMY_DMG_BOX;
+							play_fx.stop();	
+							play_fx = sound_bump;
+							play_fx.play();
+						}
+					}
+				}
+			}			
+				
+			if(collision == "b"){
+				player.y = enemy.y + enemy.h;
+				player.vy *= -1;
+				if (enemy.type == "BOX"){
+					player.health -= ENEMY_DMG_BOX;
+					player.vy *= -1;
+				}
+			}
+	}
+
+	player.vx *= player.grounded? player.friction: player.air_resistance;
+
+	player.w = Math.max(10*0.75, 10*(player.maxx_speed - Math.abs(player.vx))/player.maxx_speed);
+	player.h = Math.max(10*0.65, 10*(player.maxy_speed - Math.abs(player.vy))/player.maxy_speed); 
+	  
+    
+    if (player.health <= 0){
+    	finish_state = true;
+    }
+
+	//Player Buff Collision
+	for(i = 0;i < buffs.length; i++){
+		buff = buffs[i];
+		collision = collide(buff, player);
+		if (collision != "n" && buff.active){
+			player.use_buff(buff);
+            play_fx.stop();	
+			play_fx = sound_kill;
+            play_fx.play();
+		}
+	}
+	player.check_buff();
+	point_display.innerHTML = player.points.toFixed(1);
+
+	
+    //TIMING
+	time_display.innerHTML = (Math.round(time * 10) / 10).toFixed(1);   
+	raw_time += 1/fps;
+	if (time > 1/fps){		
+		time -= 1/fps;
+	}
+	//EOF
+}
+
+function draw(){
+    
+	ctx.clearRect(0, 0, WIDTH, HEIGHT);
+	var obstacle, enemy;
+    
+    //CAMERA CENTER
+	camera_dx = WIDTH/2 - scale*(player.x  + player.w/2);
+	camera_dy = HEIGHT/2 - scale*(player.y  + player.h/2);
+
+	// if (update_delay < 50){
+	// 	if (Math.abs(shift_x - camera_dx) < cam_rad_x){
+	// 		move_x = false;
+	// 		move_to_x = camera_dx;
+	// 		//scale += scale < 1.15 && Math.abs(player.vx) < 0.5*player.maxx_speed? 0.001: 0.00;
+	// 	}else{
+	// 		move_x = true;		
+	// 	}
+		
+	// 	if (Math.abs(shift_y - camera_dy) < cam_rad_y){
+	// 		move_y = false;
+	// 		move_to_y = camera_dy;
+	// 		//scale += scale < 1.15 && Math.abs(player.vy) < 0.5*player.maxy_speed? 0.001: 0.00;
+	// 	}else{
+	// 		move_y = true;		
+	// 	}
+	// 	update_delay++;
+	// }else{
+	// 	update_delay = 0;
+	// }
+
+	// if (move_x){
+	// 	shift_x += camera_dx > move_to_x? camera_vx/scale: -camera_vx/scale;		
+	// } 
+
+	// if (move_y){
+	// 	shift_y += camera_dy > move_to_y? camera_vy/scale: -camera_vy/scale;		
+	// }
+	
+	shift_x = camera_dx;
+	shift_y = camera_dy;
+	
+
+	//Draw Obstacles	
+	ctx.beginPath(); 
+	for (var i = 0; i < obstacles.length; i++) {
+		obstacle = obstacles[i];
+		if (obstacle != goal){
+		ctx.fillStyle = obstacle.colour != null? obstacle.colour : PLATFORM_COLOUR;
+    	ctx.fillRect(scale*(obstacle.x) + shift_x, scale*(obstacle.y) + shift_y, scale*obstacle.w, scale*obstacle.h);}
+	} 
+
+
+
+	//Draw Enemies	 
+	for (var i = 0; i < enemies.length; i++) {
+		enemy = enemies[i];
+		if (!enemy.dead){			
+			ctx.fillStyle = ENEMY_COLOUR;
+			ctx.beginPath()		
+		}else{
+    		ctx.fillStyle = ENEMY_COLOUR_DEAD;
+    		ctx.beginPath();
+    }
+    ctx.rect(scale*(enemy.x) + shift_x, scale*(enemy.y) + shift_y, scale*enemy.w, scale*enemy.h);
+    ctx.fill();
+	} 
+
+	//Draw AABB
+	//ctx.fillStyle = "#F00";
+	//ctx.fillRect(scale*(aabb_obj.x) + shift_x, scale*(aabb_obj.y) + shift_y, scale*(aabb_obj.w), scale*(aabb_obj.h));
+
+	//Draw player
+	ctx.fillStyle = player.colour;
+	ctx.fillRect(scale*(player.x) + shift_x, scale*(player.y) + shift_y, scale*(player.w), scale*(player.h));
+	//Draw Goal
+	ctx.fillRect(scale*(goal.x) + shift_x, scale*(goal.y) + shift_y, scale*goal.w, scale*goal.h);
+	ctx.fillStyle= BLACK;
+	ctx.fillRect(scale*(goal.x + 2) + shift_x, scale*(goal.y + 2) + shift_y, scale*(goal.w - 4), scale*(goal.h - 4));	
+	
+	
+
+	
+	if (draw_HUD){	
+
+		//Draw Health bar (centered)
+		//  ctx.fillStyle = player.colour;
+		//  ctx.fillRect( (WIDTH/2)*(1 - player.health/100.0), 0, player.health/100.0*WIDTH,10);
+
+
+		// Draw Lives (centered, w/ half lives)
+		ctx.fillStyle = player.colour;
+		num_lives = player.health/50.0;
+		for (var i = 0; i < num_lives; i++){
+			ctx.fillRect( 2*GRID_UNIT - num_lives*10 + i*20, HEIGHT - 2*GRID_UNIT, player.health < 50.0*(i+1)?5:10 ,10);
+		}
+
+		//Draw Buff Status
+		if (draw_BUFF){
+			if (player.buffs.length > 0){
+				for (var i = 0; i < player.buffs.length; i++){
+					var buff = player.buffs[i];
+					ctx.fillStyle = buff.colour;
+					ctx.font = "25px Impact";
+					ctx.textAlign = "center";
+					ctx.fillText(buff.name.toUpperCase(), WIDTH - buff.name.length*8, 60*i + 30);
+					ctx.fillText((buff.timer*fps/1000).toFixed(1), WIDTH - 35, 60*i + 60);
+				}
+
+			}else{
+				ctx.fillStyle = BLACK;
+				ctx.font = "25px Impact";
+				ctx.textAlign = "center";
+				ctx.fillText("NO BUFF", WIDTH - 56, 30);
+			}
+		}
+
+		//Draw High Score
+		if (draw_SCORE){
+			ctx.fillStyle = BLACK;
+			ctx.font = "20px Impact";
+			ctx.textAlign = "left";
+			ctx.fillText("HISCORE: " + level_array[level][2].toFixed(1), WIDTH - 150, HEIGHT - 20);
+		}
+
+		// Draw Jump/Walljump Active
+		if (draw_JUMP){
+			if (player.jump || player.walljump){
+				ctx.fillStyle = player.colour;
+				ctx.font = "25px Impact";
+				ctx.textAlign = "center";
+				ctx.fillText("JUMP", 2*GRID_UNIT, 30);		
+			}			
+		}
+	}
+
+	//Draw Buffs
+	ctx.beginPath(); 
+	for (var i = 0; i < buffs.length; i++) {
+		var buff = buffs[i];
+		if (buff.active){
+			ctx.fillStyle = buff.colour;    	
+			ctx.fillRect(scale*(buff.x) + shift_x, scale*(buff.y) + shift_y, scale*buff.w, scale*buff.h);
+		}
+	}
+
+	
+	point_label.innerHTML = "POINTS";
+	timer_label.innerHTML = "TIME";
+	instruct_panel.innerHTML = "";
+}
+//END OF RUNTIME FUNCTIONS
+
+
+
+function death_state(){
+	if (player.health <= 0){
+		ctx.fillStyle = "#444";
+		ctx.fillRect(0,0,WIDTH, HEIGHT + 20);
+		ctx.font = "50px Impact";
+		ctx.fillStyle = ENEMY_COLOUR;
+		ctx.textAlign = "center";
+		ctx.fillText("GAME OVER", WIDTH/2, HEIGHT/2);
+		player.colour = WHITE;
+		point_display.innerHTML = "";
+		point_label.innerHTML = "";
+		time_display.innerHTML = "";
+		timer_label.innerHTML = "";
+		instruct_panel.innerHTML = "PRESS R TO RESTART LEVEL";
+		updating = false;
+	}
+}
+
+function end_state(){
+
+		if (updating){
+			ctx.fillStyle = BLACK;
+			ctx.fillRect(0,0,WIDTH, HEIGHT + 20);
+			ctx.font = "50px Impact";
+			ctx.fillStyle = player.colour;
+			ctx.textAlign = "center";
+			player.points += time;
+			level_array[level][2] = player.points > level_array[level][2]? player.points: level_array[level][2];
+			ctx.fillText("WIN", WIDTH/2, HEIGHT/2);
+			ctx.font = "35px Impact";
+			ctx.fillText((player.points).toFixed(2), WIDTH/2, HEIGHT/2 + 50);
+			ctx.fillText("HI: " + (level_array[level][2]).toFixed(2), WIDTH/2, HEIGHT/2 + 100);
+			point_display.innerHTML = "";
+			point_label.innerHTML = "";
+			time_display.innerHTML = "";
+			timer_label.innerHTML = "";			
+			updating = false;
+			if (level_array[level + 1] != null){
+				instruct_panel.innerHTML = "PRESS R TO RESTART <br> PRESS L TO LEVEL UP";
+				level_array[level + 1][1] = true;
+			}else{
+				instruct_panel.innerHTML = "PRESS R TO RESTART";
+			}
+
+		}
+		
+}
+
+
+//FSM FUNCTIONS
+function level_pick(){
+        play_music.stop();	
+		state = 0;
+        paused = false;
+        restart = false;
+		point_display.innerHTML = "";
+		point_label.innerHTML = "";
+		time_display.innerHTML = "";
+		timer_label.innerHTML = "";
+		instruct_panel.innerHTML = "PRESS ENTER TO SELECT LEVEL";
+
+		ctx.clearRect(0, 0, WIDTH, HEIGHT);
+        ctx.textAlign = "left";
+		ctx.font = "50px Impact";
+		
+		for(var i = 0; i < level_array.length; i++){
+			
+			ctx.fillStyle = i == hover? (level_array[i][1]? WHITE: LIGHT_GREY ): (level_array[i][1]? BLACK : DARK_GREY);
+			ctx.fillRect(2*GRID_UNIT + 2*i*GRID_UNIT - GRID_UNIT/2, 0, 2*GRID_UNIT, HEIGHT);
+			ctx.fillStyle = i == hover? (level_array[i][1]? BLACK: DARK_GREY) : (level_array[i][1]? WHITE: LIGHT_GREY);
+			ctx.fillText(i + 1, 2*GRID_UNIT + 2*i*GRID_UNIT , HEIGHT - 2*GRID_UNIT);
+
+		}
+        
+        if (!keys[37] && !keys[65] && !keys[39] && !keys[68] && !keys[13]){ //All unpressed
+			pressed = false;
+		}
+
+		//left arrow
+		if ((keys[37] || keys[65]) && !pressed){
+			hover -= 1;
+			level -= 1;
+			pressed = true;
+            play_fx.stop();	
+		    play_fx = sound_bounce;
+            play_fx.play();
+
+			if(level < 0){
+				hover = level_array.length - 1;
+				level = level_array.length - 1;
+			}	
+						
+		}		
+
+		//right arrow
+		if ((keys[39] || keys[68]) && !pressed){
+			hover += 1;
+			level += 1;
+			pressed = true;
+            play_fx.stop();	
+		    play_fx = sound_bounce;
+            play_fx.play();
+			if(level > level_array.length - 1){
+				hover = 0;
+				level = 0;
+			}			
+		}
+		//enter key
+	    if(keys[13] && !pressed) {
+            pressed = true;
+	        if (level_array[level][1]) {
+				sound_kill.play(); 
+				start_level();
+				state = 1;
+			 }else { 
+                sound_bump.play();
+			}
+	    }  
+     
+
+		//EOF
+}
+
+function pause_menu_state(){
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.font = "25px Impact";
+	ctx.textAlign = "center";    
+    var text = "";
+    for(var i = 0; i < pause_menu.length; i++){
+        
+        ctx.fillStyle = i == pause_hover? WHITE : BLACK;
+        ctx.fillRect(WIDTH/2 - 4*GRID_UNIT + 2*GRID_UNIT*i, 0, 2*GRID_UNIT, HEIGHT);
+        ctx.fillStyle = i == pause_hover? BLACK : WHITE;
+        text = pause_menu[i];
+		for (var j = 0; j < text.length; j++){			
+			ctx.fillText(text[j], WIDTH/2 - 3*GRID_UNIT + 2*GRID_UNIT*i, 2*GRID_UNIT + GRID_UNIT*j);
+		}
+        
+
+    }
+    
+    if (!keys[37] && !keys[65] && !keys[39] && !keys[68]){ //all keys unpressed
+        pressed = false;
+    }
+
+    //left arrow
+    if ((keys[37] || keys[65]) && !pressed){
+        pause_hover -= 1;
+        pressed = true;
+		play_fx.stop();	
+		play_fx = sound_bounce;
+        play_fx.play();
+        if(pause_hover < 0){
+            pause_hover = pause_menu.length - 1;
+        }	
+                    
+    }
+    
+    //right arrow
+    if ((keys[39] || keys[68]) && !pressed){
+        pause_hover += 1;
+        pressed = true;
+		play_fx.stop();
+		play_fx = sound_bounce;
+        play_fx.play();
+        if(pause_hover > pause_menu.length - 1){
+            pause_hover = 0;
+        }			
+    }
+
+    //enter key
+    if(keys[13] && !select) {
+		play_fx.stop();	
+		play_fx = sound_kill;
+        play_fx.play();
+        select = true;
+             
+    }
+
+    if(select && !keys[13]){
+        select = false;
+		state = 4 + pause_hover;
+		hover = level;    
+    }
+
+		//EOF
+}
+
+//PAUSE SUBSTATE FUNCTIONS
+function resume(){
+	state = 1;
+	paused = false;
+	updating = true;
+}
+
+function instruct(){
+	ctx.fillStyle = "#444";
+	ctx.fillRect(0,0,WIDTH, HEIGHT + 20);
+	ctx.font = "50px Impact";
+	ctx.fillStyle = BLACK;
+	ctx.textAlign = "left";
+	ctx.fillText("INSTRUCTIONS", 2*GRID_UNIT, 50);
+	ctx.fillText("LEVEL OBJECTS", WIDTH/2 + 2*GRID_UNIT, 50);
+	ctx.font = "20px Impact";
+	ctx.fillText("USE WASD or ARROW KEYS to MOVE", 2*GRID_UNIT, 100);
+	ctx.fillText("JUMP on PLATFORMS and WALLJUMP on WALLS", 2*GRID_UNIT, 150);
+	ctx.fillText("CLING to CEILING and DROP to REACH PLATFORMS", 2*GRID_UNIT, 200);
+	ctx.fillText("AVOID ENEMIES and PICK UP BUFFS for TIMED BOOSTS", 2*GRID_UNIT, 250);
+    ctx.fillText("JUMP to the END PORTAL to UNLOCK the NEXT LEVEL", 2*GRID_UNIT, 300);
+    ctx.fillText("JUMP FAST and COLLECT COINS for HISCORES", 2*GRID_UNIT, 350);
+    ctx.fillText("PRESS ESC or P to PAUSE", 2*GRID_UNIT, 400);
+
+	ctx.fillStyle = BLACK;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 135, 6*GRID_UNIT, GRID_UNIT);
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 85, ENEMY_WIDTH, ENEMY_HEIGHT);
+	ctx.fillStyle = PINK;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 185, BUFF_SIZE, BUFF_SIZE);
+	ctx.fillStyle = MINT
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 235, BUFF_SIZE, BUFF_SIZE);
+	ctx.fillStyle = YELLOW;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 285, BUFF_SIZE, BUFF_SIZE);
+	ctx.fillStyle = GREEN;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 335, BUFF_SIZE, BUFF_SIZE);
+	ctx.fillStyle = LILAC;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 385, BUFF_SIZE, BUFF_SIZE);
+
+	ctx.fillStyle = WHITE;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT, 435, GRID_UNIT, GRID_UNIT);
+	ctx.fillStyle = BLACK;
+	ctx.fillRect(WIDTH/2 + 10*GRID_UNIT + 2, 435 + 2, GRID_UNIT - 4, GRID_UNIT - 4);
+
+	ctx.fillText("ENEMY", WIDTH/2 + 2*GRID_UNIT, 100);
+	ctx.fillText("ENEMY SPAWNER", WIDTH/2 + 2*GRID_UNIT, 150);
+	ctx.fillText("HEALTH BUFF", WIDTH/2 + 2*GRID_UNIT, 200);
+	ctx.fillText("SPEED BUFF", WIDTH/2 + 2*GRID_UNIT, 250);
+	ctx.fillText("POINT BUFF", WIDTH/2 + 2*GRID_UNIT, 300);
+	ctx.fillText("JUMP BUFF", WIDTH/2 + 2*GRID_UNIT, 350);
+	ctx.fillText("DEATH BUFF", WIDTH/2 + 2*GRID_UNIT, 400);    
+	ctx.fillText("END PORTAL", WIDTH/2 + 2*GRID_UNIT, 450);
+	
+
+    ctx.fillStyle = WHITE;
+    ctx.fillText("JUMP AROUND.      - HOUSE OF PAIN", 2*GRID_UNIT, 500);
+
+	
+	if (keys[27]){
+        state = 2;
+    }
+}
+
+function options(){
+	
+	ctx.fillStyle = "#444";
+	ctx.fillRect(0,0,WIDTH, HEIGHT + 20);
+	
+	var text = "";
+    for(var i = 0; i < opt_menu.length; i++){
+        
+		ctx.font = "25px Impact";
+		ctx.textAlign = "center";
+        ctx.fillStyle = i == opt_hover? WHITE : BLACK;
+        ctx.fillRect(WIDTH/2 - (opt_menu.length)*GRID_UNIT + 2*GRID_UNIT*i, 0, 2*GRID_UNIT, HEIGHT);
+        ctx.fillStyle = i == opt_hover? BLACK : WHITE;
+		text = opt_menu[i][0];
+		for (var j = 0; j < text.length; j++){			
+			ctx.fillText(text[j], WIDTH/2 - (opt_menu.length - 1)*GRID_UNIT + 2*GRID_UNIT*i, 2*GRID_UNIT + GRID_UNIT*j);
+		}
+		ctx.fillStyle = WHITE;
+		ctx.font = "50px Impact";
+		ctx.textAlign = "left";
+		text = opt_menu[opt_hover][2].split(" ");
+		for(var j = 0; j < text.length; j++){	
+			ctx.fillText(text[j], WIDTH/2 + (opt_menu.length + 2)*GRID_UNIT, HEIGHT/2 + 2*GRID_UNIT*j); 
+		}	
+		
+		ctx.font = "50px Impact";	
+		var value = typeof opt_menu[opt_hover][1] == "number"? opt_menu[opt_hover][1].toFixed(1): opt_menu[opt_hover][1];
+    	ctx.fillText(value, 3*GRID_UNIT, HEIGHT/2 - GRID_UNIT); 
+
+    }
+
+	if (!keys[37] && !keys[65] && !keys[39] && !keys[68] && !(keys[40] || keys[83]) && !(keys[38] || keys[87])){ //all keys unpressed
+        pressed = false;
+    }
+
+    //left arrow
+    if ((keys[37] || keys[65]) && !pressed){
+        opt_hover -= 1;
+        pressed = true;
+		play_fx.stop();	
+		play_fx = sound_bounce;
+        play_fx.play();
+        if(opt_hover < 0){
+            opt_hover = opt_menu.length - 1;
+        }	
+                    
+    }
+    
+    //right arrow
+    if ((keys[39] || keys[68]) && !pressed){
+        opt_hover += 1;
+        pressed = true;
+		play_fx.stop();
+		play_fx = sound_bounce;
+        play_fx.play();
+        if(opt_hover > opt_menu.length - 1){
+            opt_hover = 0;
+        }			
+    } 
+
+	 //up arrow
+	if ((keys[38] || keys[87]) && !pressed){
+        pressed = true;
+		play_fx.stop();
+		play_fx = sound_bounce;
+        play_fx.play();
+        if (typeof opt_menu[opt_hover][1] == "number"){
+			opt_menu[opt_hover][1] += 0.1;
+			if (opt_menu[opt_hover][0] == "MUSIC" || opt_menu[opt_hover][0] == "SFX"){
+				if (opt_menu[opt_hover][1] > 1.0){
+					opt_menu[opt_hover][1] = 1.0;
+				}
+				if (opt_menu[opt_hover][1] < 0.0){
+					opt_menu[opt_hover][1] = 0.0;
+				}
+			}else{
+				if (opt_menu[opt_hover][1] > 2.0){
+					opt_menu[opt_hover][1] = 2.0;
+				}
+				if (opt_menu[opt_hover][1] < 0.5){
+					opt_menu[opt_hover][1] = 0.5;
+				}
+			}
+		}else{
+			opt_menu[opt_hover][1] = !opt_menu[opt_hover][1];
+		} 		
+		update_settings();
+	} 
+
+	 //down arrow
+	 if ((keys[40] || keys[83]) && !pressed){
+        pressed = true;
+		play_fx.stop();
+		play_fx = sound_bounce;
+        play_fx.play();
+        if (typeof opt_menu[opt_hover][1] == "number"){
+			opt_menu[opt_hover][1] -= 0.1;
+			if (opt_menu[opt_hover][0] == "MUSIC" || opt_menu[opt_hover][0] == "SFX"){
+				if (opt_menu[opt_hover][1] > 1.0){
+					opt_menu[opt_hover][1] = 1.0;
+				}
+				if (opt_menu[opt_hover][1] < 0.0){
+					opt_menu[opt_hover][1] = 0.0;
+				}
+			}else{
+				if (opt_menu[opt_hover][1] > 2.0){
+					opt_menu[opt_hover][1] = 2.0;
+				}
+				if (opt_menu[opt_hover][1] < 0.5){
+					opt_menu[opt_hover][1] = 0.5;
+				}
+			}
+		}else{
+			opt_menu[opt_hover][1] = !opt_menu[opt_hover][1];
+		} 		
+		update_settings();
+	} 
+    
+	
+	if (keys[27]){
+        state = 2;
+		update_settings();
+    }	
+}
+
+function update_settings(){
+	//update settings	
+	bgm_vol    = opt_menu[0][1];
+	sfx_vol    = opt_menu[1][1];
+	scale      = opt_menu[2][1];
+	draw_HUD   = opt_menu[3][1];
+	draw_JUMP  = opt_menu[4][1];
+	draw_BUFF  = opt_menu[5][1];
+	draw_SCORE = opt_menu[6][1];
+
+	sound_bounce.set_vol(sfx_vol);
+	sound_bump.set_vol(sfx_vol); 
+	sound_kill.set_vol(sfx_vol); 
+	sound_drop.set_vol(sfx_vol); 
+	sound_goal.set_vol(sfx_vol); 
+
+	music_1.set_vol(bgm_vol);
+	music_2.set_vol(bgm_vol);
+	music_3.set_vol(bgm_vol);
+}
+
+function credits(){
+    ctx.fillStyle = "#444";
+	ctx.fillRect(0,0,WIDTH, HEIGHT + 20);
+	ctx.font = "50px Impact";
+	ctx.fillStyle = BLACK;
+	ctx.textAlign = "left";
+	ctx.fillText("CREDITS",2*GRID_UNIT, 50);
+	ctx.font = "20px Impact";
+    ctx.textAlign = "left";
+    ctx.fillText("JAY KOSHY", 15*GRID_UNIT, 100);
+	ctx.fillText("JOANNA KOSHY", 15*GRID_UNIT, 150);
+	ctx.fillText("ALEX AUSTIN, JAMES GREAVES, ROCK GU, OSAMA HYDER, JALEN JESUDASAN, SAMIYAH HUSSAIN KHAN, LILY LI,", 15*GRID_UNIT, 200);
+    ctx.fillText("HAARIS MIAN, KAREN MILLER, SARAH RIZKALLA, AREZU SALAMZADEH, SKY TON, SADIA SHEIKH, EUDORA SHUM", 15*GRID_UNIT, 250);
+    ctx.fillText("JAY KOSHY, SKY TON, SADIA SHEIKH", 15*GRID_UNIT, 300);
+	ctx.fillText("ZEBRA ROBOTICS and EVERYONE THAT PLAYED THE GAME", 15*GRID_UNIT, 350);
+
+    ctx.fillStyle = WHITE;
+	ctx.fillText("PROGRAMMING", 2*GRID_UNIT, 100);
+	ctx.fillText("MUSIC", 2*GRID_UNIT, 150);
+	ctx.fillText("TESTING/FEEDBACK", 2*GRID_UNIT, 200);
+	ctx.fillText("DESIGN", 2*GRID_UNIT, 300);
+    ctx.fillText("SPECIAL THANKS", 2*GRID_UNIT, 350);
+
+	
+	if (keys[27]){
+        state = 2;
+    }
+}
+
+
+function game_play_state(){
+       
+    handle();
+    if(updating){ 
+        update();          
+        draw();
+        now = Date.now();
+        elapsed = now - then; 
+        then = Date.now();
+
+        //NEXT STATES
+        if (paused && !keys[80]){
+        	updating = false;
+        	state = 2;
+    	}
+    	if (restart && !keys[82]){
+    		restart = false;
+    		start_level(level);
+    	}
+
+    	if (finish_state){
+    		state = 3;
+    	}
+
+    } 
+      
+}
+    
+function game_pause_state(){
+    
+    if(!updating){        
+        if(keys[80]) {
+			pause_hover = 0;
+        	paused = false;
+    	}
+
+    	if(!paused && !keys[80]){
+			pause_hover = 0;
+    		updating = true;
+        	state = 1; //go to gameplay state
+    	}
+
+        pause_menu_state();
+    }    
+}
+
+function game_end_state(){
+
+	handle();
+	death_state();
+	end_state();	
+
+	if (restart && !keys[82]){ //r key pressed (restart current level)
+		restart = false;
+		finish_state = false;
+		start_level();
+		updating = true;
+		state = 1; // go to gameplay state
+    }
+    if (level_up && !keys[76]){ //l key pressed (level up)		
+		var next_level = level_array[level + 1];
+        level_up = false;
+		if (next_level != null){
+			level_up = false;
+			paused = false;
+			finish_state = false;
+			updating = true;
+			if (next_level[1]){
+				++level;
+				start_level();
+				state = 1; // go to gameplay state
+			}else {
+				sound_bump.play();
+			}
+		}
+    	
+    }
+
+}
+
+
+
+function start_level(){
+	time = TIMEBONUS;
+	raw_time = 0.00;
+    updating = true;
+    pause_hover = 0;
+    if (play_music != music_array[level%music_array.length]){	
+        play_music.stop();
+        play_music = music_array[level%music_array.length];
+        play_music.play();
+    }else{
+        play_music.play();
+    }
+	level_array[level][0]();
+	shift_x = WIDTH/2 - scale*(player.x  + player.w/2);
+	shift_y = HEIGHT/2 - scale*(player.y  + player.h/2);
+}
+
+//LEVEL FUNCTIONS
+function level_1(){
+
+	LEVEL_HEIGHT = 40*GRID_UNIT;
+	LEVEL_WIDTH = 20*GRID_UNIT;
+	
+	player = new Player(2*GRID_UNIT, LEVEL_HEIGHT - 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	goal = {name: "goal", x:13.5*GRID_UNIT,y:6*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+	
+	
+	// //Buffs (B - T)
+	buffs.push(new Buff("coin", 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 16*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 22*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 28*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+
+
+	//Platforms (B - T)
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 4*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:11*GRID_UNIT, y:LEVEL_HEIGHT - 7*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 10*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:11*GRID_UNIT, y:LEVEL_HEIGHT - 13*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 16*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:11*GRID_UNIT, y:LEVEL_HEIGHT - 19*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 22*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:11*GRID_UNIT, y:LEVEL_HEIGHT - 25*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 28*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:11*GRID_UNIT, y:LEVEL_HEIGHT - 31*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+
+	//Enemies(L - R)
+	enemies.push({type:"BOX",x:16*GRID_UNIT,y:LEVEL_HEIGHT - 14*GRID_UNIT,w:ENEMY_WIDTH,h:ENEMY_HEIGHT,vx:BOXSPEED,vy:0,dead:false,platform:null});
+	enemies.push({type:"BOX",x:16*GRID_UNIT,y:LEVEL_HEIGHT - 20*GRID_UNIT,w:ENEMY_WIDTH,h:ENEMY_HEIGHT,vx:BOXSPEED,vy:0,dead:false,platform:null});
+	enemies.push({type:"BOX",x:16*GRID_UNIT,y:LEVEL_HEIGHT - 26*GRID_UNIT,w:ENEMY_WIDTH,h:ENEMY_HEIGHT,vx:BOXSPEED,vy:0,dead:false,platform:null});
+	
+	obstacles.push(goal);
+	
+}
+
+function level_2(){
+	
+	LEVEL_HEIGHT = 40*GRID_UNIT;
+	LEVEL_WIDTH = 30*GRID_UNIT;
+
+	player = new Player(2*GRID_UNIT, LEVEL_HEIGHT - 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	goal = {name: "goal", x:LEVEL_WIDTH/2 - GRID_UNIT,y:2*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+
+	//Buffs
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - 2*GRID_UNIT, LEVEL_HEIGHT - 8*GRID_UNIT, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", 23*GRID_UNIT, LEVEL_HEIGHT - 25*GRID_UNIT, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", 7*GRID_UNIT, LEVEL_HEIGHT - 25*GRID_UNIT, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 + 3*GRID_UNIT, LEVEL_HEIGHT - 30*GRID_UNIT, BUFF_SIZE, YELLOW, coin, dnf, 0));
+
+	//rails	
+	obstacles.push({x:LEVEL_WIDTH/2 - GRID_UNIT, y:LEVEL_HEIGHT - 14*GRID_UNIT, w:GRID_UNIT, h:10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - GRID_UNIT, y:LEVEL_HEIGHT - 34*GRID_UNIT, w:GRID_UNIT, h:8*GRID_UNIT});
+
+	//platforms
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 12*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:20*GRID_UNIT, y:LEVEL_HEIGHT - 12*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:3*GRID_UNIT, y:LEVEL_HEIGHT - 26*GRID_UNIT, w:24*GRID_UNIT, h:GRID_UNIT});
+	obstacles.push({x:20*GRID_UNIT, y:LEVEL_HEIGHT - 22*GRID_UNIT, w:6*GRID_UNIT, h:GRID_UNIT});
+
+	obstacles.push(goal);
+	
+
+	enemies.push({type:"BOX",x:22*GRID_UNIT,y:LEVEL_HEIGHT - 23*GRID_UNIT,w:ENEMY_WIDTH,h:ENEMY_HEIGHT,vx:BOXSPEED,vy:0,dead:false,platform:null});
+	
+	
+}
+
+function level_3(){
+
+	LEVEL_HEIGHT = 50*GRID_UNIT;
+	LEVEL_WIDTH = 30*GRID_UNIT;
+
+	player = new Player(LEVEL_WIDTH/2 - 5, LEVEL_HEIGHT - 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	grounded = false;
+	goal = {name: "goal", x:LEVEL_WIDTH/2 - GRID_UNIT/2,y: 3*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+
+	//Buffs	
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 + 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 21*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 28*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 + 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 35*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - 6*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 42*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+
+	//Platforms
+	obstacles.push({x:LEVEL_WIDTH/2 + 3*GRID_UNIT, y: LEVEL_HEIGHT - 21*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 9*GRID_UNIT, y: LEVEL_HEIGHT - 28*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});	
+	obstacles.push({x:LEVEL_WIDTH/2 + 3*GRID_UNIT, y: LEVEL_HEIGHT - 35*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 9*GRID_UNIT, y: LEVEL_HEIGHT - 42*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+
+	// //Quads
+	// platform_quad(LEVEL_WIDTH/2 - 14*GRID_UNIT, 35*GRID_UNIT, 2*GRID_UNIT);
+	// platform_quad(LEVEL_WIDTH/2 + 6*GRID_UNIT, 35*GRID_UNIT, 2*GRID_UNIT);
+
+	//Rails
+	obstacles.push({x:LEVEL_WIDTH/2 - 4*GRID_UNIT, y: LEVEL_HEIGHT - 13*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2  + 3*GRID_UNIT, y: LEVEL_HEIGHT - 20*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2  - 4*GRID_UNIT, y: LEVEL_HEIGHT - 27*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2  + 3*GRID_UNIT, y: LEVEL_HEIGHT - 34*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 4*GRID_UNIT, y: LEVEL_HEIGHT - 41*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 3*GRID_UNIT, y: LEVEL_HEIGHT - 48*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 + 6*GRID_UNIT - ENEMY_WIDTH/2, y: LEVEL_HEIGHT - 23*GRID_UNIT, vx: 0, vy: 0,   w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 6*GRID_UNIT - ENEMY_WIDTH/2, y: LEVEL_HEIGHT - 32*GRID_UNIT, vx: 0, vy: 0,   w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 + 6*GRID_UNIT - ENEMY_WIDTH/2, y: LEVEL_HEIGHT - 37*GRID_UNIT, vx: 0, vy: 0,   w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 6*GRID_UNIT - ENEMY_WIDTH/2, y: LEVEL_HEIGHT - 44*GRID_UNIT, vx: 0, vy: 0,   w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	obstacles.push(goal);
+}
+
+function level_4(){
+
+	LEVEL_HEIGHT = 60*GRID_UNIT;
+	LEVEL_WIDTH = 40*GRID_UNIT;
+
+	player = new Player(LEVEL_WIDTH/2 - 5, 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	grounded = false;
+	goal = {name: "goal", x:LEVEL_WIDTH/2 - GRID_UNIT/2,y:LEVEL_HEIGHT - 3*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+
+	//Buffs
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 35*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 48*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("speed", LEVEL_WIDTH/2 - 7*GRID_UNIT, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, MINT, speed_buff, speed_debuff, 0.5));
+	buffs.push(new Buff("health", LEVEL_WIDTH/2 + 7*GRID_UNIT, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, PINK, health_buff, health_debuff, 1.0));
+	
+	//Platforms
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 4*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 28*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 48*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 10*GRID_UNIT, y: 22*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 4*GRID_UNIT, y: 22*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	
+	// //Quads
+	// platform_quad(LEVEL_WIDTH/2 - 14*GRID_UNIT, 35*GRID_UNIT, 2*GRID_UNIT);
+	// platform_quad(LEVEL_WIDTH/2 + 6*GRID_UNIT, 35*GRID_UNIT, 2*GRID_UNIT);
+	
+	//Cliffs
+	platform_cliff(LEVEL_WIDTH/2 - 13*GRID_UNIT, 35*GRID_UNIT, 4*GRID_UNIT, 7*GRID_UNIT);
+	platform_cliff(LEVEL_WIDTH/2 + 3*GRID_UNIT , 35*GRID_UNIT, 4*GRID_UNIT, 7*GRID_UNIT);
+	
+	//Rails
+	//obstacles.push({x:LEVEL_WIDTH/2 - 10*GRID_UNIT, y: 30*GRID_UNIT, w: GRID_UNIT, h: 10*GRID_UNIT});
+
+	enemies.push({type: "SPAWN", x: LEVEL_WIDTH/2 - 10*GRID_UNIT, y: 10*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT, dead: false, spawn: false, colour: ENEMY_COLOUR});
+	enemies.push({type: "SPAWN", x: LEVEL_WIDTH/2 + 4*GRID_UNIT, y: 10*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT, dead: false, spawn: false, colour: ENEMY_COLOUR});
+	enemies.push({type: "SPAWN",x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 35*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT, dead: false, spawn: false, colour: ENEMY_COLOUR});
+
+	enemies.push({type: "SPAWN",x:LEVEL_WIDTH/2 - 11*GRID_UNIT, y: 48*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT, dead: false, spawn: false, colour: ENEMY_COLOUR});
+	enemies.push({type: "SPAWN",x:LEVEL_WIDTH/2 + 5*GRID_UNIT, y: 48*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT, dead: false, spawn: false, colour: ENEMY_COLOUR});
+
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 0.5*ENEMY_WIDTH, y: 27*GRID_UNIT, vx: 0, vy: 0,   w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	obstacles.push(goal);
+}
+
+function level_5(){
+    LEVEL_HEIGHT = 30*GRID_UNIT;
+	LEVEL_WIDTH = 60*GRID_UNIT;
+
+	player = new Player(5*GRID_UNIT, 10*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	grounded = false;
+	goal = {name: "goal", x:LEVEL_WIDTH - 5*GRID_UNIT,y:20*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+
+	//Buffs
+    buffs.push(new Buff("speed", 4*GRID_UNIT, 15*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, MINT, speed_buff, speed_debuff, 1.0));
+    buffs.push(new Buff("coin", 25*GRID_UNIT - BUFF_SIZE/2, 15*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+    buffs.push(new Buff("coin", 45*GRID_UNIT - BUFF_SIZE/2, 15*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	
+	//Platforms
+	obstacles.push({x:4*GRID_UNIT, y: 15*GRID_UNIT, w: 2*GRID_UNIT, h: GRID_UNIT});
+    obstacles.push({x:14*GRID_UNIT, y: 15*GRID_UNIT, w: 2*GRID_UNIT, h: GRID_UNIT});
+    obstacles.push({x:24*GRID_UNIT, y: 15*GRID_UNIT, w: 2*GRID_UNIT, h: GRID_UNIT});
+    obstacles.push({x:34*GRID_UNIT, y: 15*GRID_UNIT, w: 2*GRID_UNIT, h: GRID_UNIT});
+    obstacles.push({x:44*GRID_UNIT, y: 15*GRID_UNIT, w: 2*GRID_UNIT, h: GRID_UNIT});
+	
+	obstacles.push(goal);
+}
+
+function level_6(){
+    LEVEL_HEIGHT = 60*GRID_UNIT;
+	LEVEL_WIDTH = 40*GRID_UNIT;
+
+	player = new Player(LEVEL_WIDTH/2 - 5, LEVEL_HEIGHT - 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	grounded = false;
+	goal = {name: "goal", x:LEVEL_WIDTH/2 - GRID_UNIT/2,y:3*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+
+	//Buffs
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 20*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 30*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 40*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - BUFF_SIZE/2, 50*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("jump", LEVEL_WIDTH/2 - BUFF_SIZE/2, LEVEL_HEIGHT - 5*GRID_UNIT, BUFF_SIZE, GREEN, jump_buff, jump_debuff, 1.5));
+	// buffs.push(new Buff("health", LEVEL_WIDTH/2 + 7*GRID_UNIT, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, PINK, health_buff, health_debuff, 1.0));
+	
+	//Platforms
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 10*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 50*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	
+
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 20*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 30*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT, y: 40*GRID_UNIT, w: 6*GRID_UNIT, h: GRID_UNIT});
+	
+	//Quads
+	// platform_quad(LEVEL_WIDTH/2 - 14*GRID_UNIT, 25*GRID_UNIT, 2*GRID_UNIT);
+	// platform_quad(LEVEL_WIDTH/2 + 6*GRID_UNIT, 25*GRID_UNIT, 2*GRID_UNIT);
+	
+	obstacles.push(goal);
+}
+
+function level_7(){
+
+	LEVEL_HEIGHT = 60*GRID_UNIT;
+	LEVEL_WIDTH = 50*GRID_UNIT;
+
+	player = new Player(LEVEL_WIDTH/2 - 5, 3*GRID_UNIT, 10, 10);
+
+	accelx = 0;
+	accely = 0;
+	grounded = false;
+	goal = {name: "goal", x:LEVEL_WIDTH/2 - GRID_UNIT/2,y:LEVEL_HEIGHT - 3*GRID_UNIT,w:GRID_UNIT,h:GRID_UNIT, colour: WHITE};
+
+	buffs = [];
+	obstacles = [];
+	enemies = [];
+
+	//LEVEL OBJECTS
+	//Boundaries
+	// obstacles.push({x:0,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //LEFT BORDER
+	// obstacles.push({x:LEVEL_WIDTH - GRID_UNIT,y:0,w:GRID_UNIT,h:LEVEL_HEIGHT}); //RIGHT BORDER
+	obstacles.push({x:0,y:LEVEL_HEIGHT - GRID_UNIT,w:LEVEL_WIDTH,h:GRID_UNIT}); //BOTTOM BORDER
+
+	//Buffs
+	buffs.push(new Buff("death", LEVEL_WIDTH/2 - BUFF_SIZE/2, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, LILAC, death_buff, death_debuff, 0.8));
+	buffs.push(new Buff("jump", LEVEL_WIDTH/2 + 5*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 4*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, GREEN, jump_buff, jump_debuff, 1.0));
+	buffs.push(new Buff("jump", LEVEL_WIDTH/2 - 5*GRID_UNIT - BUFF_SIZE/2, LEVEL_HEIGHT - 4*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, GREEN, jump_buff, jump_debuff, 1.0));
+
+	buffs.push(new Buff("death",LEVEL_WIDTH/2 - 21*GRID_UNIT - BUFF_SIZE/2, 7*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, LILAC, death_buff, death_debuff, 0.8));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - 21*GRID_UNIT - BUFF_SIZE/2, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 - 15*GRID_UNIT - BUFF_SIZE/2, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+
+	buffs.push(new Buff("jump", LEVEL_WIDTH/2 + 21*GRID_UNIT - BUFF_SIZE/2, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, GREEN, jump_buff, jump_debuff, 0.5));
+	buffs.push(new Buff("speed",LEVEL_WIDTH/2 + 15*GRID_UNIT - BUFF_SIZE/2, 10*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, MINT, speed_buff, speed_debuff, 0.6));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 + 21*GRID_UNIT - BUFF_SIZE/2, 7*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+	buffs.push(new Buff("coin", LEVEL_WIDTH/2 + 15*GRID_UNIT - BUFF_SIZE/2, 7*GRID_UNIT - BUFF_SIZE, BUFF_SIZE, YELLOW, coin, dnf, 0));
+
+	//Platforms
+	obstacles.push({x:LEVEL_WIDTH/2 - 3*GRID_UNIT,y:20*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+
+	obstacles.push({x:LEVEL_WIDTH/2 - 18*GRID_UNIT,y:10*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 24*GRID_UNIT,y:10*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 12*GRID_UNIT,y:10*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 18*GRID_UNIT,y:10*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+
+	obstacles.push({x:LEVEL_WIDTH/2 - 9*GRID_UNIT,y:25*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 - 15*GRID_UNIT,y:30*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 3*GRID_UNIT,y:25*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 9*GRID_UNIT,y:30*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+
+	obstacles.push({x:LEVEL_WIDTH/2 - 21*GRID_UNIT,y:35*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	obstacles.push({x:LEVEL_WIDTH/2 + 15*GRID_UNIT,y:35*GRID_UNIT,w:6*GRID_UNIT,h:GRID_UNIT});
+	
+
+	//Enemies
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 + 5*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 5*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 + 11*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 11*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 + 17*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	enemies.push({type: "BOX", x:LEVEL_WIDTH/2 - 17*GRID_UNIT - ENEMY_WIDTH/2, y: 22*GRID_UNIT, vx: 0, vy: 0, w: ENEMY_WIDTH, h: ENEMY_HEIGHT, dead: false, spawn: false, colour: ENEMY_COLOUR, platform: null});
+	
+	obstacles.push(goal);
+}
+
+
+//MAIN FSM
+function fsm(){	
+    
+	window.requestAnimationFrame(fsm);
+
+    switch(states[state]){
+            
+        case "start_menu_state":
+            level_pick();
+            break;
+            
+        case "game_play_state":
+            game_play_state();            
+            break;
+            
+        case "game_pause_state":
+            game_pause_state();
+            break;
+		
+		case "pause_resume":
+			resume();
+			break;
+
+		case "pause_instruct":		//BIRTH!
+			instruct();
+			break;
+		
+		case "pause_options":
+			options();
+			break;
+		
+		case "pause_level":
+			level_pick();
+			break;
+        
+        case "pause_credits":
+            credits();
+            break;
+            
+        case "game_end_state":
+            game_end_state();
+            break;
+    }    
+	
+}
+
+window.addEventListener("load", function(){	
+	fsm();
+});
+
+</script>
+
+</body>
+</html>
