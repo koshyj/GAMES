@@ -68,8 +68,8 @@ class Box:
 
 
     # CHECKS
-    def check(self):    # Does a row and col check, returning x wins if both x and o have won
-        return self.check_col() if (self.check_col() > self.check_row()) else self.check_row()
+    # def check(self):    # Does a row and col check, returning x wins if both x and o have won
+    #     return self.check_col() if ( self.check_col() > self.check_row() ) else self.check_row()
 
 
     def check_row(self):    # Returns 0 for no consistent row values, 1 for a row of o's, 2 for a row of x's
@@ -104,7 +104,7 @@ class Box:
             while (down_box != None):
                 if (down_box.get_value() != self.get_value()):
                     return 0
-                down_box = down_box.get_right_box()        
+                down_box = down_box.get_down_box()        
         return self.get_value()
     
 
@@ -112,19 +112,21 @@ class Box:
         if not self.get_value():
             return 0
         else:
-            # Checking left up to right down diagonal
-            if ( self.get_value() != self.get_left_box().get_up_box().get_value() or self.get_value() != self.get_right_box().get_down_box().get_value() ):
-                return 0
-            # Checking left down to right up diagonal
-            if ( self.get_value() != self.get_left_box().get_down_box().get_value() or self.get_value() != self.get_right_box().get_up_box().get_value() ):
-                return 0
-            return self.get_value()
+            # Checking left up to right down diagonal for non wins
+            if ( self.get_value() == self.get_left_box().get_up_box().get_value() or self.get_value() == self.get_right_box().get_down_box().get_value() ):
+                return self.get_value()
+            # Checking left down to right up diagonal for non wins
+            if ( self.get_value() == self.get_left_box().get_down_box().get_value() or self.get_value() == self.get_right_box().get_up_box().get_value() ):
+                return self.get_value()
+            return 0
+        
 
 
     def print_box(self):
         sys.stdout.write( "[ " + str(self.get_value()) + " ]")
 
-            
+
+# MAP Class
 class Map:
 
     def __init__(self):
@@ -174,24 +176,25 @@ class Map:
 
     
     def check_win(self):    # Uses the middle column to check all rows, the top. Assumes only one win can occur in the game
-        if ( self.root_box.check() ):
-            self.win = self.root_box.get_value()
-        if ( self.root_box.check_diagonal() ):
-            self.win = self.root_box.get_value()
-
+        
         up_box = self.root_box.get_up_box()
         down_box = self.root_box.get_down_box()
         left_box = self.root_box.get_left_box()
         right_box = self.root_box.get_right_box()
 
-        if ( up_box.check() ):
+        if ( up_box.check_row() ):
             self.win = up_box.get_value()
-        if ( down_box.check() ):
+        if ( down_box.check_row() ):
             self.win = down_box.get_value()
-        if ( left_box.check() ):
+        if ( left_box.check_col() ):
             self.win = left_box.get_value()
-        if ( right_box.check() ):
+        if ( right_box.check_col() ):
             self.win = right_box.get_value()
+
+        if ( self.root_box.check_col() or self.root_box.check_row() ):
+            self.win = self.root_box.get_value()
+        if ( self.root_box.check_diagonal() ):
+            self.win = self.root_box.get_value()
         
         return self.win
 
@@ -215,5 +218,11 @@ class Map:
 
 
 map = Map()
+
+map.root_box.set_o()
+map.root_box.get_up_box().set_o()
+map.root_box.get_down_box().set_o()
+
 map.print_map()
-print str(map.win)
+map.check_win()
+print str( map.win )
