@@ -1,66 +1,59 @@
 import pygame
+from classes import *
 
+# GLOBAL CONTROL
+game_running = 0
 
-class game_entity:
-    def __init__(self, x=0, y=0, vx=0, vy=0, ap=0, hp=100.0, group="platform" ):
-        self.x = x
-        self.y = y
-        self.vx = vx
-        self.vy = vy
+# display control
+SCREEN_WIDTH = 640
+SCREEN_HEIGHT = 640
+FPS = 60
+BACKGROUND_COLOUR = (0, 0, 0)
 
-        self.ap = ap
-        self.hp = hp
+# GAME OBJECTS
+game_entities = [game_entity(100, 100, 20, 15, 20, 20)]
+# pygame
+screen = pygame.display.set_mode( [SCREEN_WIDTH, SCREEN_HEIGHT] )
+clock = pygame.time.Clock()
 
-        self.group = group
+# physics control
+delta_t = 0
 
-    def update(self, delta_t):
-        self.x += self.vx*delta_t
-        self.y += self.vy*delta_t
-    
-    def draw(self, screen):
-        pass
     
 
 # GAME FSM
 def game_run():
-
     # Initial Setup
-    pygame.display.init()
+    pygame.init()
 
-    # GLOBAL GAME VARIABLES
-    # game control
-    game_running = 1
-    
-    # display control
-    screen_width = 640
-    screen_height = 640
-
-    # objects
-    game_entities = []
-
-    # pygame
-    screen = pygame.display.set_mode([screen_width, screen_height])
-    clock = pygame.time.Clock()
-
-    # Running Game Functions
+    # start game loop
+    game_running = 1 
     while game_running:
+        # Running Game Functions
         handle()
-        update(game_entities, clock)
         draw(game_entities, screen)
-
+        update(game_entities, clock)
+        
 
 # GAME FUNCTIONS
 def handle():
-    pass
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            game_running = 0
+            pygame.quit()
 
 def update(game_entities, clock):
-    delta_t = clock.tick(60)
+    delta_t = clock.tick_busy_loop(FPS)/1000.0
     for entity in game_entities:
         entity.update(delta_t)
     
 
 def draw(game_entities, screen):
+    screen.fill(BACKGROUND_COLOUR)
     for entity in game_entities:
-        entity.draw()
+        entity.draw(screen)    
+    pygame.display.flip()
 
+
+game_run()
 
